@@ -118,3 +118,36 @@ indexedDF.show()
 |       c|       chinese macao|    [chinese, macao]| (6,[0,2],[1.0,1.0])|  0.0|
 |       o|australia sydney ...|[australia, sydne...|(6,[0,4,5],[1.0,1...|  1.0|
 +--------+--------------------+--------------------+--------------------+-----+
+
+# import naive bayes
+from pyspark.ml.classification import NaiveBayes
+nb = NaiveBayes(featuresCol='features', labelCol='label', predictionCol='nb_prediction',smoothing=1.0, modelType='multinomial')
+# use the indexed result of training data to fit a nb_model  
+nb_model = nb.fit(indexedDF)
+# put the test data into this model to see the prediction
+nb_model_result1 = nb_model.transform(testfDF)
+
+nb_model_result1.show(truncate=False) 
++----------------------------------------+----------------------------------------------+-------------------------+-------------------------------------+----------------------------------------+-------------+
+|desc                                    |words                                         |features                 |rawPrediction                        |probability                             |nb_prediction|
++----------------------------------------+----------------------------------------------+-------------------------+-------------------------------------+----------------------------------------+-------------+
+|chinese chinese chinese australia sydney|[chinese, chinese, chinese, australia, sydney]|(6,[0,4,5],[3.0,1.0,1.0])|[-8.22547334850029,-8.61899927254948]|[0.5971312047958578,0.40286879520414226]|0.0          |
++----------------------------------------+----------------------------------------------+-------------------------+-------------------------------------+----------------------------------------+-------------+
+
+
+*********************************************************
+# use pipeline to replace a bunch of stuff 
+from pyspark.ml import Pipeline
+# got the estimator of the pipleline
+nb_pipeline = Pipeline(stages=[tz,countv,indexer,nb])
+# use the rawdata of train data to fit into model 
+pipeline_model = nb_pipeline.fit(TrainDF)
+# put the test data to be predicted 
+result_DF = pipeline_model.transform(testDF)
+
+result_DF.show(truncate=False)
++----------------------------------------+----------------------------------------------+-------------------------+-------------------------------------+----------------------------------------+-------------+
+|desc                                    |words                                         |features                 |rawPrediction                        |probability                             |nb_prediction|
++----------------------------------------+----------------------------------------------+-------------------------+-------------------------------------+----------------------------------------+-------------+
+|chinese chinese chinese australia sydney|[chinese, chinese, chinese, australia, sydney]|(6,[0,4,5],[3.0,1.0,1.0])|[-8.22547334850029,-8.61899927254948]|[0.5971312047958578,0.40286879520414226]|0.0          |
++----------------------------------------+----------------------------------------------+-------------------------+-------------------------------------+----------------------------------------+-------------+
