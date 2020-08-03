@@ -1,0 +1,120 @@
+from pyspark.sql import SparkSession, Row
+from pyspark import SparkConf, SparkContext
+
+conf = SparkConf().setMaster("local[*]").setAppName("test")
+sc = SparkContext(conf = conf) # RDD entry
+spark = SparkSession.builder.config(conf = conf).getOrCreate() # dataframe entry
+
+#input the data list 
+TrainingData = [["chinese beijing chinese","c"], ["chinese chinese nanjing","c"],["chinese macao","c"],["australia sydney chinese","o"],]
+trainRDD = sc.parallelize(TrainingData)
+testData = ["chinese chinese chinese australia sydney"]
+testRDD = sc.parallelize(testData)# parallelize 
+
+# process the rawdata into table-look data 
+trainRDD = trainRDD.map(lambda x: Row(category = x[1],desc = x[0]))
+testRDD = testRDD.map(lambda x : Row(desc = x))
+TrainDF = spark.createDataFrame(trainRDD)
+testDF = spark.createDataFrame(testRDD)
+
+TrainDF.show()
++--------+--------------------+
+|category|                desc|
++--------+--------------------+
+|       c|chinese beijing c...|
+|       c|chinese chinese n...|
+|       c|       chinese macao|
+|       o|australia sydney ...|
++--------+--------------------+
+# you can use truncate = False to make the details be shown 
+TrainDF.show(truncate=False)
++--------+------------------------+
+|category|desc                    |
++--------+------------------------+
+|c       |chinese beijing chinese |
+|c       |chinese chinese nanjing |
+|c       |chinese macao           |
+|o       |australia sydney chinese|
++--------+------------------------+
+
+# you can do some operation like sql select ,groupby
+TrainDF.select("desc").show(truncate=False)
++------------------------+
+|desc                    |
++------------------------+
+|chinese beijing chinese |
+|chinese chinese nanjing |
+|chinese macao           |
+|australia sydney chinese|
++------------------------+
+
+# must remember that when using groupby , you need to use count() as well , to show the result 
+TrainDF.groupby("category").count().show()
++--------+-----+
+|category|count|
++--------+-----+
+|       o|    1|
+|       c|    3|
++--------+-----+
+
+# use Tokenizer in order to do split 
+from pyspark.ml.feature import Tokenizer
+from pyspark.sql.functions import col
+#define a Tokenzier 
+tz = Tokenizer(inputCol = "desc", outputCol = "words")
+tzDF = tz.transform(TrainDF)
+tzDF.show(truncate=False)
+
++--------+------------------------+----------------------------+
+|category|desc                    |words                       |
++--------+------------------------+----------------------------+
+|c       |chinese beijing chinese |[chinese, beijing, chinese] |
+|c       |chinese chinese nanjing |[chinese, chinese, nanjing] |
+|c       |chinese macao           |[chinese, macao]            |
+|o       |australia sydney chinese|[australia, sydney, chinese]|
++--------+------------------------+----------------------------+
+
+
+# import COuntVectorizer
+from pyspark.ml.feature import CountVectorizer
+# bag of words count
+countv = CountVectorizer(inputCol="words", outputCol = "features")
+# use Estimator to fit to model 
+countvModel = countv.fit(tzDF)
+fDF = countvModel.transform(tzDF)
+fDF.show(truncate=False)
+
++--------+------------------------+----------------------------+-------------------------+
+|category|desc                    |words                       |features                 |
++--------+------------------------+----------------------------+-------------------------+
+|c       |chinese beijing chinese |[chinese, beijing, chinese] |(6,[0,3],[2.0,1.0])      |
+|c       |chinese chinese nanjing |[chinese, chinese, nanjing] |(6,[0,1],[2.0,1.0])      |
+|c       |chinese macao           |[chinese, macao]            |(6,[0,2],[1.0,1.0])      |
+|o       |australia sydney chinese|[australia, sydney, chinese]|(6,[0,4,5],[1.0,1.0,1.0])|
++--------+------------------------+----------------------------+-------------------------+
+
+# have used training data to fit a model , hence the test data didn't need to create a model anymore , just use the model made by training data 
+testfDF = countvModel.transform(testtzDF)
+testfDF.show(truncate=False)
+
++----------------------------------------+----------------------------------------------+-------------------------+
+|desc                                    |words                                         |features                 |
++----------------------------------------+----------------------------------------------+-------------------------+
+|chinese chinese chinese australia sydney|[chinese, chinese, chinese, australia, sydney]|(6,[0,4,5],[3.0,1.0,1.0])|
++----------------------------------------+----------------------------------------------+-------------------------+
+
+# stringIndexer
+from pyspark.ml.feature import StringIndexer
+# label indexer
+indexer = StringIndexer(inputCol="category", outputCol = "label")
+# put feature to fit 
+indexedDF = indexer.fit(fDF).transform(fDF)
+indexedDF.show()
++--------+--------------------+--------------------+--------------------+-----+
+|category|                desc|               words|            features|label|
++--------+--------------------+--------------------+--------------------+-----+
+|       c|chinese beijing c...|[chinese, beijing...| (6,[0,3],[2.0,1.0])|  0.0|
+|       c|chinese chinese n...|[chinese, chinese...| (6,[0,1],[2.0,1.0])|  0.0|
+|       c|       chinese macao|    [chinese, macao]| (6,[0,2],[1.0,1.0])|  0.0|
+|       o|australia sydney ...|[australia, sydne...|(6,[0,4,5],[1.0,1...|  1.0|
++--------+--------------------+--------------------+--------------------+-----+
